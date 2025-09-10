@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
   try {
-    const categories = await Category.find().select('name _id');
+    const categories = await Category.find().select('name _id icon');
     res.json({
       success: true,
       data: categories

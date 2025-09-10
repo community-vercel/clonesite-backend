@@ -4,17 +4,19 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
-
+const Category= require('../models/Category');
 const User = require('../models/User');
-const sendEmail = require('../utils/email');
+const { sendEmail } = require('../utils/email');
+
+
 const logger = require('../utils/loggerutility');
 const { protect } = require('../middleware/auth'); // Your middleware file
 const router = express.Router();
-
+const axios=require('axios');
 // Rate limiting for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
+  max: 5000, // limit each IP to 5 requests per windowMs
   message: 'Too many authentication attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,

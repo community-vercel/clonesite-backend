@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
+const mongoose = require('mongoose');
 
 const User = require('../models/User');
 const Service = require('../models/Service');
@@ -129,11 +130,103 @@ router.get('/', [
   }
 });
 
+
+// @desc    Get user dashboard stats
+// @route   GET /api/users/dashboard
+// @access  Private
+router.get('/dashboard', protect, async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user.id); // Ensure userId is an ObjectId
+    const userType = req.user.userType;
+
+    let stats = {};
+
+    if (userType === 'customer' || userType === 'both') {
+      const customerStats = await Request.aggregate([
+        { $match: { customer: userId } },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalSpent: { $sum: '$payment.totalAmount' }
+          }
+        }
+      ]);
+
+      stats.customer = {
+        totalRequests: customerStats.reduce((sum, stat) => sum + stat.count, 0),
+        activeRequests: customerStats.find(s => ['published', 'receiving_quotes', 'quotes_received'].includes(s._id))?.count || 0,
+        completedRequests: customerStats.find(s => s._id === 'completed')?.count || 0,
+        totalSpent: customerStats.reduce((sum, stat) => sum + (stat.totalSpent || 0), 0)
+      };
+    }
+
+    if (userType === 'service_provider' || userType === 'both') {
+      const providerStats = await Request.aggregate([
+        { $match: { selectedProvider: userId } },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalEarnings: { $sum: '$payment.totalAmount' }
+          }
+        }
+      ]);
+
+      const serviceCount = await Service.countDocuments({ provider: userId, isActive: true });
+      const quotesCount = await Request.countDocuments({ 'quotes.provider': userId });
+
+      stats.provider = {
+        totalServices: serviceCount,
+        totalQuotes: quotesCount,
+        activeJobs: providerStats.find(s => s._id === 'in_progress')?.count || 0,
+        completedJobs: providerStats.find(s => s._id === 'completed')?.count || 0,
+        totalEarnings: providerStats.reduce((sum, stat) => sum + (stat.totalEarnings || 0), 0),
+        rating: req.user.rating
+      };
+    }
+
+    const recentRequests = await Request.find({
+      $or: [
+        { customer: userId },
+        { selectedProvider: userId },
+        { 'quotes.provider': userId }
+      ]
+    })
+    .populate('category', 'name icon')
+    .populate('customer', 'firstName lastName avatar')
+    .populate('selectedProvider', 'firstName lastName avatar')
+    .sort({ updatedAt: -1 })
+    .limit(10);
+
+    res.json({
+      success: true,
+      data: {
+        stats,
+        recentRequests
+      }
+    });
+  } catch (error) {
+    logger.error('Get dashboard error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get dashboard data',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
 // @desc    Get single user
 // @route   GET /api/users/:id
 // @access  Public
 router.get('/:id', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     const user = await User.findOne({ _id: req.params.id, isActive: true })
       .select('-password -emailVerificationToken -resetPasswordToken')
       .populate('categories', 'name slug icon')
@@ -153,7 +246,6 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Get user's services if they're a service provider
     let services = [];
     if (user.userType === 'service_provider' || user.userType === 'both') {
       services = await Service.find({ 
@@ -165,7 +257,6 @@ router.get('/:id', async (req, res) => {
       .limit(6);
     }
 
-    // Get recent work/completed requests
     const recentWork = await Request.find({
       $or: [
         { customer: user._id },
@@ -185,9 +276,14 @@ router.get('/:id', async (req, res) => {
         recentWork
       }
     });
-
   } catch (error) {
     logger.error('Get user error:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Failed to get user',
@@ -598,94 +694,6 @@ router.put('/preferences', protect, async (req, res) => {
   }
 });
 
-// @desc    Get user dashboard stats
-// @route   GET /api/users/dashboard
-// @access  Private
-router.get('/dashboard', protect, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const userType = req.user.userType;
-
-    let stats = {};
-
-    if (userType === 'customer' || userType === 'both') {
-      // Customer stats
-      const customerStats = await Request.aggregate([
-        { $match: { customer: userId } },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 },
-            totalSpent: { $sum: '$payment.totalAmount' }
-          }
-        }
-      ]);
-
-      stats.customer = {
-        totalRequests: customerStats.reduce((sum, stat) => sum + stat.count, 0),
-        activeRequests: customerStats.find(s => ['published', 'receiving_quotes', 'quotes_received'].includes(s._id))?.count || 0,
-        completedRequests: customerStats.find(s => s._id === 'completed')?.count || 0,
-        totalSpent: customerStats.reduce((sum, stat) => sum + (stat.totalSpent || 0), 0)
-      };
-    }
-
-    if (userType === 'service_provider' || userType === 'both') {
-      // Service provider stats
-      const providerStats = await Request.aggregate([
-        { $match: { selectedProvider: userId } },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 },
-            totalEarnings: { $sum: '$payment.totalAmount' }
-          }
-        }
-      ]);
-
-      const serviceCount = await Service.countDocuments({ provider: userId, isActive: true });
-      const quotesCount = await Request.countDocuments({ 'quotes.provider': userId });
-
-      stats.provider = {
-        totalServices: serviceCount,
-        totalQuotes: quotesCount,
-        activeJobs: providerStats.find(s => s._id === 'in_progress')?.count || 0,
-        completedJobs: providerStats.find(s => s._id === 'completed')?.count || 0,
-        totalEarnings: providerStats.reduce((sum, stat) => sum + (stat.totalEarnings || 0), 0),
-        rating: req.user.rating
-      };
-    }
-
-    // Recent activities
-    const recentRequests = await Request.find({
-      $or: [
-        { customer: userId },
-        { selectedProvider: userId },
-        { 'quotes.provider': userId }
-      ]
-    })
-    .populate('category', 'name icon')
-    .populate('customer', 'firstName lastName avatar')
-    .populate('selectedProvider', 'firstName lastName avatar')
-    .sort({ updatedAt: -1 })
-    .limit(10);
-
-    res.json({
-      success: true,
-      data: {
-        stats,
-        recentRequests
-      }
-    });
-
-  } catch (error) {
-    logger.error('Get dashboard error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get dashboard data',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
-  }
-});
 
 // @desc    Deactivate user account
 // @route   DELETE /api/users/account
