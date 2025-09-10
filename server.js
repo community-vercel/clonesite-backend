@@ -36,7 +36,7 @@ const io = new Server(server, {
 app.use(helmet());
 app.use(compression());
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  origin: process.env.CLIENT_URL || "http://localhost:3000"||"https://clonesite-frontend.vercel.app",
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
