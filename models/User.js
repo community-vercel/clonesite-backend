@@ -354,5 +354,18 @@ userSchema.methods.calculateDistance = function(targetLocation) {
   
   return distance;
 };
+userSchema.statics.findNearby = function (coordinates, maxDistance) {
+  return this.find({
+    location: {
+      $near: {
+        $geometry: {
+          type: 'Point',
+          coordinates, // [lon, lat]
+        },
+        $maxDistance: maxDistance, // in meters
+      },
+    },
+  });
+}
 
 module.exports = mongoose.model('User', userSchema);

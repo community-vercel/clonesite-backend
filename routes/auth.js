@@ -228,6 +228,139 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     });
   }
 });
+// Add this endpoint to your auth routes file
+
+// @desc    Register customer (simplified registration for request flow)
+// @route   POST /api/auth/register-customer
+// @access  Public
+router.post('/register-customer', authLimiter, [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('phone')
+    .notEmpty()
+    .withMessage('Phone number is required')
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { email, phone, password,postcode } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ 
+      $or: [{ email }, { phone }] 
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already exists with this email or phone number'
+      });
+    }
+ let location = { type: 'Point', coordinates: [0, 0], postcode: '' };
+    if ( postcode) {
+      try {
+        const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+          params: {
+            q: postcode,
+            format: 'json',
+            addressdetails: 1,
+            limit: 1
+          },
+          headers: { 'User-Agent': 'Clone/1.0' }
+        });
+        if (response.data.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid postcode'
+          });
+        }
+        const { lat, lon } = response.data[0];
+        location = {
+          type: 'Point',
+          coordinates: [parseFloat(lon), parseFloat(lat)],
+          postcode
+        };
+      } catch (error) {
+        logger.error('Geocoding error:', error);
+        return res.status(400).json({
+          success: false,
+          message: 'Failed to validate postcode'
+        });
+      }
+    }
+    // Create customer user with minimal required fields
+    const user = await User.create({
+      firstName: 'Customer', // Temporary - can be updated later
+      lastName: email.split('@')[0], // Temporary - can be updated later
+      email,
+      phone,
+      password,
+     
+      location,
+      userType: 'customer',
+      emailVerified: false, // Will be verified later
+      isActive: true
+    });
+
+    // Generate email verification token (optional - can be sent later)
+    const emailVerificationToken = crypto.randomBytes(20).toString('hex');
+    user.emailVerificationToken = crypto
+      .createHash('sha256')
+      .update(emailVerificationToken)
+      .digest('hex');
+    user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000;
+
+    await user.save();
+
+    // Send verification email (optional)
+    try {
+      const verificationUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email/${emailVerificationToken}`;
+      await sendEmail({
+        email: user.email,
+        subject: 'Welcome! Please verify your email',
+        template: 'emailVerification',
+        data: { name: 'Customer', verificationUrl }
+      });
+    } catch (error) {
+      logger.error('Email verification send failed:', error);
+      // Don't fail registration if email fails
+    }
+
+    // Generate JWT token
+    const token = user.generateToken();
+    user.password = undefined;
+
+    res.status(201).json({
+      success: true,
+      message: 'Customer registered successfully',
+      data: { user, token }
+    });
+
+  } catch (error) {
+    logger.error('Customer registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// Add this to the end of your auth routes file
 
 // @desc    Login user
 // @route   POST /api/auth/login

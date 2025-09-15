@@ -15,6 +15,9 @@ const userRoutes = require('./routes/user');
 const serviceRoutes = require('./routes/services');
 const categoryRoutes = require('./routes/categories');
 const requestRoutes = require('./routes/request');
+const leadsRouter = require('./routes/lead');
+
+// Use the leads routes
 // const reviewRoutes = require('./routes/reviews');
 // const paymentRoutes = require('./routes/');
 // const notificationRoutes = require('./routes/notifications');
@@ -93,6 +96,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/requests', requestRoutes);
+app.use('/api/leads', leadsRouter);
+
 // app.use('/api/reviews', reviewRoutes);
 // app.use('/api/payments', paymentRoutes);
 // app.use('/api/notifications', notificationRoutes);

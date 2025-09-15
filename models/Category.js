@@ -16,18 +16,14 @@ const categorySchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    required: [true, 'Category description is required'],
     maxlength: [500, 'Description cannot exceed 500 characters']
   },
-  icon: {
-    type: String,
-    required: [true, 'Category icon is required']
-  },
+  icon: String,
   image: {
     type: String,
     default: 'default-category.jpg'
   },
-  
+
   // Hierarchy
   parent: {
     type: mongoose.Schema.ObjectId,
@@ -44,130 +40,85 @@ const categorySchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  
+
   // Category Settings
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  isFeatured: {
-    type: Boolean,
-    default: false
-  },
-  sortOrder: {
-    type: Number,
-    default: 0
-  },
-  
+  isActive: { type: Boolean, default: true },
+  isFeatured: { type: Boolean, default: false },
+  sortOrder: { type: Number, default: 0 },
+
   // SEO
   seoTitle: String,
   seoDescription: String,
   seoKeywords: [String],
-  
+
   // Statistics
   stats: {
-    totalServices: {
-      type: Number,
-      default: 0
-    },
-    totalProviders: {
-      type: Number,
-      default: 0
-    },
-    totalRequests: {
-      type: Number,
-      default: 0
-    },
-    averagePrice: {
-      type: Number,
-      default: 0
-    }
+    totalServices: { type: Number, default: 0 },
+    totalProviders: { type: Number, default: 0 },
+    totalRequests: { type: Number, default: 0 },
+    averagePrice: { type: Number, default: 0 }
   },
-  
-  // Category-specific questions for service requests
+
+  // 🟢 Category-specific dynamic questions (the Bark-style questionnaire)
   customFields: [{
-    name: {
-      type: String,
-      required: true
-    },
-    label: {
-      type: String,
-      required: true
-    },
+    key: { type: String, required: true }, // e.g. "bedrooms"
+    label: { type: String, required: true }, // e.g. "How many bedrooms?"
     type: {
       type: String,
-      enum: ['text', 'textarea', 'select', 'multiselect', 'number', 'date', 'boolean', 'file'],
+      enum: [
+        'text', 'textarea', 'select', 'multiselect',
+        'number', 'date', 'boolean', 'file', 'radio'
+      ],
       required: true
     },
-    options: [String], // For select/multiselect
-    required: {
-      type: Boolean,
-      default: false
-    },
+    options: [String], // For select/multiselect/radio
+    required: { type: Boolean, default: false },
     placeholder: String,
+
+    // Validation
     validation: {
       min: Number,
       max: Number,
       pattern: String,
       message: String
     },
-    order: {
-      type: Number,
-      default: 0
-    }
+
+    // Conditional logic support
+    conditional: {
+      dependsOn: String, // key of another field
+      value: mongoose.Mixed // show only if value matches
+    },
+
+    order: { type: Number, default: 0 }
   }],
-  
+
   // Pricing guidelines
   pricingInfo: {
-    currency: {
-      type: String,
-      default: 'USD'
-    },
-    priceRange: {
-      min: Number,
-      max: Number
-    },
+    currency: { type: String, default: 'USD' },
+    priceRange: { min: Number, max: Number },
     pricingType: {
       type: String,
       enum: ['hourly', 'fixed', 'per_project', 'per_item', 'per_sqft', 'negotiable'],
       default: 'negotiable'
     },
-    priceFactors: [String] // What affects pricing in this category
+    priceFactors: [String]
   },
-  
+
   // Popular services in this category
   popularServices: [String],
-  
-  // Required skills/qualifications
+
+  // Requirements
   requirements: {
-    license: {
-      type: Boolean,
-      default: false
-    },
-    insurance: {
-      type: Boolean,
-      default: false
-    },
-    certification: {
-      type: Boolean,
-      default: false
-    },
-    experience: {
-      min: Number,
-      max: Number
-    },
-    backgroundCheck: {
-      type: Boolean,
-      default: false
-    }
+    license: { type: Boolean, default: false },
+    insurance: { type: Boolean, default: false },
+    certification: { type: Boolean, default: false },
+    experience: { min: Number, max: Number },
+    backgroundCheck: { type: Boolean, default: false }
   },
-  
-  // Category metadata
+
+  // Metadata
   metadata: {
-    color: {
-      type: String,
-      default: '#007bff'
-    },
+    color: { type: String, default: '#007bff' },
     tags: [String],
     relatedCategories: [{
       type: mongoose.Schema.ObjectId,
@@ -187,43 +138,26 @@ categorySchema.index({ isActive: 1, isFeatured: 1 });
 categorySchema.index({ level: 1, sortOrder: 1 });
 categorySchema.index({ name: 'text', description: 'text' });
 
-// Virtual for children categories
+// Virtuals
 categorySchema.virtual('children', {
   ref: 'Category',
   localField: '_id',
-  foreignField: 'parent',
-  justOne: false
+  foreignField: 'parent'
 });
 
-// Virtual for service providers count
-categorySchema.virtual('providersCount', {
-  ref: 'User',
-  localField: '_id',
-  foreignField: 'categories',
-  count: true
-});
-
-// Virtual for services count
-categorySchema.virtual('servicesCount', {
-  ref: 'Service',
-  localField: '_id',
-  foreignField: 'category',
-  count: true
-});
-
-// Pre-save middleware to generate slug
+// Pre-save slug
 categorySchema.pre('save', function(next) {
   if (this.isModified('name')) {
     this.slug = this.name
       .toLowerCase()
-      .replace(/[^a-zA-Z0-9]/g, '-')
+      .replace(/[^a-z0-9]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
   }
   next();
 });
 
-// Pre-save middleware to set path
+// Pre-save path
 categorySchema.pre('save', async function(next) {
   if (this.parent) {
     const parentCategory = await this.constructor.findById(this.parent);
@@ -238,56 +172,31 @@ categorySchema.pre('save', async function(next) {
   next();
 });
 
-// Static method to get category tree
+// Tree builder
 categorySchema.statics.getCategoryTree = async function() {
   const categories = await this.find({ isActive: true })
     .sort({ level: 1, sortOrder: 1 })
     .lean();
-    
+
   const categoryMap = {};
   const rootCategories = [];
-  
-  // Create a map of categories
-  categories.forEach(category => {
-    category.children = [];
-    categoryMap[category._id] = category;
+
+  categories.forEach(cat => {
+    cat.children = [];
+    categoryMap[cat._id] = cat;
   });
-  
-  // Build the tree
-  categories.forEach(category => {
-    if (category.parent) {
-      if (categoryMap[category.parent]) {
-        categoryMap[category.parent].children.push(category);
+
+  categories.forEach(cat => {
+    if (cat.parent) {
+      if (categoryMap[cat.parent]) {
+        categoryMap[cat.parent].children.push(cat);
       }
     } else {
-      rootCategories.push(category);
+      rootCategories.push(cat);
     }
   });
-  
+
   return rootCategories;
-};
-
-// Static method to get breadcrumbs
-categorySchema.statics.getBreadcrumbs = async function(categoryId) {
-  const category = await this.findById(categoryId).populate('parent');
-  const breadcrumbs = [];
-  
-  let current = category;
-  while (current) {
-    breadcrumbs.unshift({
-      id: current._id,
-      name: current.name,
-      slug: current.slug
-    });
-    current = current.parent;
-  }
-  
-  return breadcrumbs;
-};
-
-// Instance method to get full category path
-categorySchema.methods.getFullPath = function() {
-  return this.path ? `${this.path}/${this.slug}` : this.slug;
 };
 
 module.exports = mongoose.model('Category', categorySchema);
