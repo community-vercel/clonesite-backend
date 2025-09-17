@@ -15,7 +15,78 @@ const logger = require('../utils/loggerutility');
 const { upload: multerUpload } = require('../middleware/uploadmiddleware'); // Rename for clarity
 
 const router = express.Router();
+router.get('/getuserservice', protect, async (req, res) => {
+  try {
+    const services = await Service.find({ provider: req.user.id, isActive: true, isPaused: false })
+      .select('title shortDescription pricing primaryImage rating')
+      .lean();
 
+    res.json({
+      success: true,
+      data: services.map(service => ({
+        ...service,
+        priceDisplay: service.priceDisplay,
+      })),
+    });
+  } catch (error) {
+    logger.error('Get services error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch services',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+    });
+  }
+});
+
+// @desc    Update service status (e.g., pause/unpause)
+// @route   PUT /api/services/:id/status
+// @access  Private
+router.put(
+  '/:id/status',
+  protect,
+  [
+    body('isPaused').isBoolean().withMessage('isPaused must be a boolean'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array(),
+        });
+      }
+
+      const { isPaused } = req.body;
+      const service = await Service.findOneAndUpdate(
+        { _id: req.params.id, provider: req.user.id },
+        { isPaused },
+        { new: true, runValidators: true }
+      ).select('title isPaused');
+
+      if (!service) {
+        return res.status(404).json({
+          success: false,
+          message: 'Service not found or unauthorized',
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Service status updated successfully',
+        data: service,
+      });
+    } catch (error) {
+      logger.error('Update service status error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update service status',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      });
+    }
+  }
+);
 // @desc    Get all services (with filters and search)
 // @route   GET /api/services
 // @access  Public

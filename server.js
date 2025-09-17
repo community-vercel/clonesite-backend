@@ -17,8 +17,10 @@ const categoryRoutes = require('./routes/categories');
 const requestRoutes = require('./routes/request');
 const leadsRouter = require('./routes/lead');
 
+const payments=require('./routes/stripe');
+
 // Use the leads routes
-// const reviewRoutes = require('./routes/reviews');
+const reviewRoutes = require('./routes/reviews');
 // const paymentRoutes = require('./routes/');
 // const notificationRoutes = require('./routes/notifications');
 // const chatRoutes = require('./routes/');
@@ -97,8 +99,10 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/leads', leadsRouter);
+app.use('/api/payments', payments);
 
-// app.use('/api/reviews', reviewRoutes);
+
+app.use('/api/reviews', reviewRoutes);
 // app.use('/api/payments', paymentRoutes);
 // app.use('/api/notifications', notificationRoutes);
 // app.use('/api/chat', chatRoutes);

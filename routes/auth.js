@@ -144,7 +144,9 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
             q: postcode,
             format: 'json',
             addressdetails: 1,
-            limit: 1
+            limit: 1,
+                countrycodes: 'pk' // restrict to Pakistan
+
           },
           headers: { 'User-Agent': 'Clone/1.0' }
         });
@@ -278,7 +280,9 @@ router.post('/register-customer', authLimiter, [
             q: postcode,
             format: 'json',
             addressdetails: 1,
-            limit: 1
+            limit: 1,
+                            countrycodes: 'pk' // restrict to Pakistan
+
           },
           headers: { 'User-Agent': 'Clone/1.0' }
         });
